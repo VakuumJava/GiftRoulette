@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Рулетка призов</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap" rel="stylesheet"/>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Montserrat',sans-serif;
+      background:linear-gradient(135deg,#33004b,#0a0018);
+      color:#fff;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;
+      min-height:100vh;overflow:hidden;
+    }
+    h1{font-size:2.5rem;margin-bottom:.5rem;text-shadow:0 2px 8px rgba(0,0,0,.5)}
+    .spin-info{margin-bottom:1rem;font-size:1.2rem}
+    .roulette-wrapper{position:relative;width:100%;max-width:600px;text-align:center}
+    .pointer{position:absolute;top:-20px;left:50%;transform:translateX(-50%);font-size:2rem;color:#ff0066;pointer-events:none}
+    .roulette-track{width:100%;height:200px;overflow:hidden;margin-bottom:1rem}
+    .inner-track{display:flex;transition:transform 5s ease-out;will-change:transform}
+    .slot{flex:0 0 120px;margin:0 8px;background:rgba(255,255,255,.1);border-radius:12px;overflow:hidden;
+      display:flex;align-items:center;justify-content:center;
+    }
+    .slot.center{transform:scale(1.3);box-shadow:0 0 20px rgba(255,255,255,.6)}
+    .slot img{width:100%;height:auto;display:block}
+    button{padding:12px 24px;margin:8px;background:#ff0066;border:none;border-radius:30px;
+      color:#fff;font-size:1rem;cursor:pointer;transition:transform .2s;
+    }
+    button:active{transform:scale(.96)}
+    button:disabled{opacity:.5;cursor:not-allowed}
+
+    /* Оверлей пополнения */
+    #deposit-overlay{position:fixed;top:0;left:0;width:100%;height:100%;
+      background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;
+      visibility:hidden;opacity:0;transition:opacity .3s;
+    }
+    #deposit-box{background:#fff;color:#000;border-radius:12px;padding:20px;
+      width:90%;max-width:500px;max-height:80%;display:flex;flex-direction:column;
+    }
+    #deposit-box h2{margin-bottom:12px;text-align:center;color:#33004b}
+    .gift-list{flex:1;overflow-y:auto;margin-bottom:12px}
+    .gift-item{display:flex;align-items:center;padding:8px;border-bottom:1px solid #ddd;
+      cursor:pointer;transition:background .2s;
+    }
+    .gift-item:hover{background:#f0f0f0}
+    .gift-item img{width:60px;height:60px;margin-right:12px;object-fit:contain}
+    .gift-info{flex:1}
+    .gift-name{font-weight:600;color:#33004b}
+    .gift-meta{font-size:.9rem;color:#666}
+    #deposit-close{padding:8px;background:#33004b;border:none;color:#fff;border-radius:20px;cursor:pointer}
+
+    /* Оверлей результата */
+    #result-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);
+      display:flex;align-items:center;justify-content:center;visibility:hidden;opacity:0;transition:opacity .3s;}
+    #result-box{background:#fff;border-radius:12px;padding:20px;text-align:center;color:#33004b;}
+    #result-box img{width:120px;height:120px;margin-bottom:12px;}
+    #result-text{font-size:1.2rem;margin-bottom:12px;}
+    #claim-btn{padding:10px 20px;background:#ff0066;border:none;border-radius:20px;color:#fff;cursor:pointer;}
+  </style>
+</head>
+<body>
+  <h1>Рулетка призов</h1>
+  <div class="spin-info">Доступно прокрутов: <span id="spin-count">0</span></div>
+  <div class="roulette-wrapper">
+    <div class="pointer">▼</div>
+    <div class="roulette-track"><div class="inner-track" id="inner"></div></div>
+    <button id="deposit-btn">Пополнить баланс подарком</button>
+    <button id="spin-btn" disabled>Прокрутить</button>
+  </div>
+
+  <!-- Оверлей пополнения -->
+  <div id="deposit-overlay">
+    <div id="deposit-box">
+      <h2>Пополнить подарком</h2>
+      <div class="gift-list" id="gift-list"></div>
+      <button id="deposit-close">Закрыть</button>
+    </div>
+  </div>
+
+  <!-- Оверлей результата -->
+  <div id="result-overlay">
+    <div id="result-box">
+      <img id="result-img" src="" alt="Приз"/>
+      <div id="result-text">Поздравляем!</div>
+      <button id="claim-btn">Забрать подарок</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+  <script>
+    const inner         = document.getElementById('inner');
+    const track         = document.querySelector('.roulette-track');
+    const depositBtn    = document.getElementById('deposit-btn');
+    const spinBtn       = document.getElementById('spin-btn');
+    const spinCountEl   = document.getElementById('spin-count');
+    const depositOverlay= document.getElementById('deposit-overlay');
+    const giftList      = document.getElementById('gift-list');
+    const depositClose  = document.getElementById('deposit-close');
+    const resultOverlay = document.getElementById('result-overlay');
+    const resultImg     = document.getElementById('result-img');
+    const resultText    = document.getElementById('result-text');
+    const claimBtn      = document.getElementById('claim-btn');
+
+    // Названия и веса 58 призов
+    const prizeNames = [
+      'Haunted House','Crash TNT','Happy Poo','Luggage','Sponge Box','Splash','Thinking Foot','Toasted','Treasure',
+      'Cat House','Money Safe','Pennywise','Top Prize','New Sneakers','Aliens','Mamma Mia','Peace Bro','Shy Pepe','Undead',
+      'Bombox','Fake Flower','Joker','Let’s Rock','Lucifer','Minifigure','Piñata','Pink Bunny','Prank Spider','Recursion',
+      'Rubik’s Cube','Santa Muerte','Trash Panda','Unicorn','Amogus','Jack-a-Snake','Maneki Neko','Matryoshka','Night Terror',
+      'Piranha Plant','Spaceship','Beetle Juice','Blue Friend','Christmas','Teddy Bear','Bouquet','Cockcrow','Dentures','Doghouse',
+      'Doughnut','Knockdown','Lunch Break','Music Box','Oktoberfest','Super Block','Thumbs Up','Tombstone','Trickster','Wonderland'
+    ];
+    const prizeWeights = [
+      0.15,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,
+      0.35,0.35,0.35,0.35,0.40,0.50,0.50,0.50,0.50,0.50,
+      0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,
+      0.75,0.75,0.75,0.80,1.00,1.00,1.00,1.00,1.00,
+      1.00,1.00,1.25,1.25,1.25,1.25,1.50,1.50,1.50,1.50,
+      1.50,1.50,1.50,1.50,1.50,1.50,1.50,1.50,1.50,1.50,
+      1.50,1.50
+    ];
+    const spinsMap = {
+      0.15:5, 0.25:4, 0.35:3, 0.40:3, 0.50:3,
+      0.75:2, 0.80:2, 1.00:1, 1.25:1, 1.50:1
+    };
+
+    let prizes = [], slotW = 0, spins = 0;
+
+    // Загружаем prizes.json и собираем полный список
+    fetch('prizes.json')
+      .then(r=>r.json())
+      .then(data => {
+        prizes = [
+          // первые два спец-слота по 25% каждый
+          { name:'Мишка за 15 звёзд',    img:'animations/loss1.png', weight:25 },
+          { name:'Сердечко за 15 звёзд', img:'animations/loss2.png', weight:25 },
+          // потом 58 из JSON
+          ...data.map((p,i)=>({
+            name:   prizeNames[i],
+            img:    p.img.replace(/\.json$/,'.png'),
+            weight: prizeWeights[i]
+          }))
+        ];
+        buildTrack(2);
+        updateSpinCount();
+      });
+
+    function buildTrack(copies){
+      inner.innerHTML = '';
+      for(let c=0;c<copies;c++){
+        prizes.forEach(p=>{
+          const slot = document.createElement('div');
+          slot.className = 'slot';
+          const img = new Image();
+          img.src = p.img;
+          slot.appendChild(img);
+          inner.appendChild(slot);
+        });
+      }
+      const sample = inner.querySelector('.slot');
+      slotW = sample.offsetWidth + 16;
+    }
+
+    function updateSpinCount(){
+      spinCountEl.textContent = spins;
+      spinBtn.disabled = spins <= 0;
+    }
+
+    function openDeposit(){
+      giftList.innerHTML = '';
+      // в депозите — только реальные (без первых двух)
+      prizes.slice(2).forEach(p=>{
+        const cnt = spinsMap[p.weight] || 1;
+        const item = document.createElement('div');
+        item.className = 'gift-item';
+        item.innerHTML = `
+          <img src="${p.img}" alt="${p.name}"/>
+          <div class="gift-info">
+            <div class="gift-name">${p.name}</div>
+            <div class="gift-meta">Редкость ${p.weight}% — даст ${cnt} прокрут${cnt>1?'ок':''}</div>
+          </div>`;
+        item.onclick = ()=>{
+          spins += cnt;
+          updateSpinCount();
+          closeDeposit();
+        };
+        giftList.appendChild(item);
+      });
+      depositOverlay.style.visibility = 'visible';
+      depositOverlay.style.opacity = 1;
+    }
+    function closeDeposit(){
+      depositOverlay.style.opacity = 0;
+      setTimeout(()=>depositOverlay.style.visibility='hidden',300);
+    }
+
+    function pickPrize(){
+      let total = prizes.reduce((sum,p)=>sum+p.weight,0),
+          r = Math.random()* total;
+      for(const p of prizes){
+        if(r < p.weight) return p;
+        r -= p.weight;
+      }
+      return prizes[0];
+    }
+
+    function startSpin(){
+      if(spins <= 0) return;
+      spins--;
+      updateSpinCount();
+
+      const win = pickPrize(),
+            idx = prizes.indexOf(win),
+            visible = Math.floor(track.offsetWidth/slotW),
+            targetPos = (prizes.length + idx - Math.floor(visible/2)) * slotW;
+
+      inner.style.transition = 'transform 5s ease-out';
+      inner.style.transform  = `translateX(${-targetPos}px)`;
+
+      inner.addEventListener('transitionend',()=>{
+        inner.querySelectorAll('.slot').forEach(s=>s.classList.remove('center'));
+        const cx = track.getBoundingClientRect().left + track.offsetWidth/2;
+        const center = [...inner.children].find(s=>{
+          const b = s.getBoundingClientRect();
+          return b.left < cx && cx < b.right;
+        });
+        center && center.classList.add('center');
+
+        // показываем оверлей результата
+        resultImg.src       = win.img;
+        resultText.textContent = `🎉 Вы выиграли: ${win.name}`;
+        resultOverlay.style.visibility = 'visible';
+        resultOverlay.style.opacity    = 1;
+        confetti({particleCount:100,spread:70});
+      },{once:true});
+    }
+
+    claimBtn.onclick = ()=>{
+      resultOverlay.style.opacity = 0;
+      setTimeout(()=>resultOverlay.style.visibility='hidden',300);
+      // сброс колеса
+      inner.style.transition = 'none';
+      inner.style.transform  = 'translateX(0)';
+    };
+
+    depositBtn.onclick   = openDeposit;
+    depositClose.onclick = closeDeposit;
+    spinBtn.onclick      = startSpin;
+  </script>
+</body>
+</html>

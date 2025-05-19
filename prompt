@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Рулетка призов</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap" rel="stylesheet"/>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Montserrat',sans-serif;
+      background:linear-gradient(135deg,#33004b,#0a0018);
+      color:#fff;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;
+      min-height:100vh;overflow:hidden;
+    }
+    h1{font-size:2.5rem;margin-bottom:.5rem;text-shadow:0 2px 8px rgba(0,0,0,.5)}
+    .spin-info{margin-bottom:1rem;font-size:1.2rem}
+    .roulette-wrapper{position:relative;width:100%;max-width:600px;text-align:center}
+    .pointer{position:absolute;top:-20px;left:50%;transform:translateX(-50%);font-size:2rem;color:#ff0066;pointer-events:none}
+    .roulette-track{width:100%;height:200px;overflow:hidden;margin-bottom:1rem}
+    .inner-track{display:flex;transition:transform 5s ease-out;will-change:transform}
+    .slot{flex:0 0 120px;margin:0 8px;background:rgba(255,255,255,.1);border-radius:12px;overflow:hidden;
+      display:flex;align-items:center;justify-content:center;
+    }
+    .slot.center{transform:scale(1.3);box-shadow:0 0 20px rgba(255,255,255,.6)}
+    .slot img{width:100%;height:auto;display:block}
+    button{padding:12px 24px;margin:8px;background:#ff0066;border:none;border-radius:30px;
+      color:#fff;font-size:1rem;cursor:pointer;transition:transform .2s;
+    }
+    button:active{transform:scale(.96)}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    #deposit-overlay{position:fixed;top:0;left:0;width:100%;height:100%;
+      background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;
+      visibility:hidden;opacity:0;transition:opacity .3s;
+    }
+    #deposit-box{background:#fff;color:#000;border-radius:12px;padding:20px;
+      width:90%;max-width:500px;max-height:80%;display:flex;flex-direction:column;
+    }
+    #deposit-box h2{margin-bottom:12px;text-align:center;color:#33004b}
+    .gift-list{flex:1;overflow-y:auto;margin-bottom:12px}
+    .gift-item{display:flex;align-items:center;padding:8px;border-bottom:1px solid #ddd;
+      cursor:pointer;transition:background .2s;
+    }
+    .gift-item:hover{background:#f0f0f0}
+    .gift-item img{width:60px;height:60px;margin-right:12px;object-fit:contain}
+    .gift-info{flex:1}
+    .gift-name{font-weight:600;color:#33004b}
+    .gift-meta{font-size:.9rem;color:#666}
+    #deposit-close{padding:8px;background:#33004b;border:none;color:#fff;border-radius:20px;cursor:pointer}
+  </style>
+</head>
+<body>
+  <h1>Рулетка призов</h1>
+  <div class="spin-info">Доступно прокрутов: <span id="spin-count">0</span></div>
+  <div class="roulette-wrapper">
+    <div class="pointer">▼</div>
+    <div class="roulette-track"><div class="inner-track" id="inner"></div></div>
+    <button id="deposit-btn">Пополнить баланс подарком</button>
+    <button id="spin-btn" disabled>Прокрутить</button>
+  </div>
+
+  <div id="deposit-overlay">
+    <div id="deposit-box">
+      <h2>Пополнить подарком</h2>
+      <div class="gift-list" id="gift-list"></div>
+      <button id="deposit-close">Закрыть</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+  <script>
+    const inner        = document.getElementById('inner');
+    const track        = document.querySelector('.roulette-track');
+    const depositBtn   = document.getElementById('deposit-btn');
+    const spinBtn      = document.getElementById('spin-btn');
+    const spinCountEl  = document.getElementById('spin-count');
+    const overlay      = document.getElementById('deposit-overlay');
+    const giftList     = document.getElementById('gift-list');
+    const depositClose = document.getElementById('deposit-close');
+
+    // Конфиг: названия и веса (проценты)
+    const names = [
+      'Haunted House','Crash TNT','Happy Poo','Luggage','Sponge Box','Splash','Thinking Foot','Toasted','Treasure',
+      'Cat House','Money Safe','Pennywise','Top Prize','New Sneakers','Aliens','Mamma Mia','Peace Bro','Shy Pepe','Undead',
+      'Bombox','Fake Flower','Joker','Let’s Rock','Lucifer','Minifigure','Piñata','Pink Bunny','Prank Spider','Recursion',
+      'Rubik’s Cube','Santa Muerte','Trash Panda','Unicorn','Amogus','Jack-a-Snake','Maneki Neko','Matryoshka','Night Terror',
+      'Piranha Plant','Spaceship','Beetle Juice','Blue Friend','Christmas','Teddy Bear','Bouquet','Cockcrow','Dentures','Doghouse',
+      'Doughnut','Knockdown','Lunch Break','Music Box','Oktoberfest','Super Block','Thumbs Up','Tombstone','Trickster','Wonderland'
+    ];
+    const weights = [
+      0.3,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,
+      0.7,0.7,0.7,0.7,0.8,1,1,1,1,1,
+      1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,
+      1.5,1.5,1.5,1.6,2,2,2,2,2,2,
+      2,2.5,2.5,2.5,2.5,3,3,3,3,3,
+      3,3,3,3,3,3,3,3,3,3
+    ];
+    // Сколько прокрутов даёт каждая редкость:
+    const spinsMap = { 3:1,2.5:2,2:3,1.6:2,1.5:2,1:3,0.8:3,0.7:3,0.5:4,0.3:5 };
+
+    let prizes = [], slotW=0, spins=0;
+
+    // Загружаем prizes.json
+    fetch('prizes.json')
+      .then(r=>r.json())
+      .then(data=>{
+        prizes = data.map((p,i)=>({
+          name: names[i],
+          img: p.img,       // "animations/XXX.json"
+          weight: weights[i]
+        }));
+        buildTrack(2);
+        buildGiftList();
+      });
+
+    function buildTrack(copies){
+      inner.innerHTML = '';
+      for(let c=0;c<copies;c++){
+        prizes.forEach(p=>{
+          const slot = document.createElement('div');
+          slot.className='slot';
+          const img = document.createElement('img');
+          // ожидается, что рядом с JSON будет PNG-превью
+          img.src = p.img.replace('.json','.png');
+          slot.appendChild(img);
+          inner.appendChild(slot);
+        });
+      }
+      // вычисляем ширину с учётом маргина
+      const sample = inner.querySelector('.slot');
+      slotW = sample.offsetWidth + 16;
+    }
+
+    function buildGiftList(){
+      giftList.innerHTML='';
+      prizes.forEach(p=>{
+        const cnt = spinsMap[p.weight] || 1;
+        const item = document.createElement('div');
+        item.className='gift-item';
+        const img = document.createElement('img');
+        img.src = p.img.replace('.json','.png');
+        const info = document.createElement('div');
+        info.className='gift-info';
+        info.innerHTML = `
+          <div class="gift-name">${p.name}</div>
+          <div class="gift-meta">Редкость ${p.weight}% — даст ${cnt} прокрут${cnt>1?'ок':''}</div>
+        `;
+        item.append(img, info);
+        giftList.appendChild(item);
+
+        item.onclick = ()=>{
+          spins += cnt;
+          spinCountEl.textContent = spins;
+          spinBtn.disabled = spins===0;
+          closeDeposit();
+        };
+      });
+    }
+
+    depositBtn.onclick = ()=>openDeposit();
+    depositClose.onclick = ()=>closeDeposit();
+    spinBtn.onclick = ()=>startSpin();
+
+    function openDeposit(){
+      overlay.style.visibility='visible';
+      overlay.style.opacity=1;
+    }
+    function closeDeposit(){
+      overlay.style.opacity=0;
+      setTimeout(()=>overlay.style.visibility='hidden',300);
+    }
+
+    function pickPrize(){
+      let total = prizes.reduce((s,p)=>s+p.weight,0);
+      let r = Math.random()*total;
+      for(const p of prizes){
+        if(r < p.weight) return p;
+        r -= p.weight;
+      }
+      return prizes[0];
+    }
+
+    function startSpin(){
+      spinBtn.disabled = true;
+      spins--; spinCountEl.textContent = spins;
+      const n = prizes.length;
+      const win = pickPrize();
+      const target = prizes.indexOf(win);
+      const visible = Math.floor(track.offsetWidth/slotW);
+      const idx = n + target - Math.floor(visible/2);
+      const dist = idx*slotW;
+
+      inner.style.transition='transform 5s ease-out';
+      inner.style.transform = `translateX(${-dist}px)`;
+
+      inner.addEventListener('transitionend',()=>{
+        inner.querySelectorAll('.slot').forEach(s=>s.classList.remove('center'));
+        const cx = track.getBoundingClientRect().left + track.offsetWidth/2;
+        const center = [...inner.children].find(s=>{
+          const r=s.getBoundingClientRect();
+          return r.left<cx && cx<r.right;
+        });
+        center && center.classList.add('center');
+
+        setTimeout(()=>{
+          alert(`🎉 Вы выиграли: ${win.name}`);
+          confetti({particleCount:100,spread:70});
+          location.reload();
+        },300);
+      },{once:true});
+    }
+  </script>
+</body>
+</html>
+
+надо чтоб при победе картинка, которую я победил выходила на передний план с надписью о победе, а также куда пропадают остальные прокруты, добавь БД
