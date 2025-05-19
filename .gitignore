@@ -1,0 +1,14 @@
+# JavaScript / Node
+node_modules/
+
+# Python venv
+venv/
+
+# Puppeteer scratch folders
+puppeteer_tmp_profile/
+
+# локальные превью
+previews/
+
+# системные
+.DS_Store
